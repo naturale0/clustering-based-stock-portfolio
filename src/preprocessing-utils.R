@@ -52,7 +52,7 @@ reshape_long <- function(data) {
     data[["quarter"]] <-
       data[["quarter"]] %>%
       plyr::revalue(c("Semi" = 2,
-                      "Annual" = 4)) %>%
+                    "Annual" = 4)) %>%
       as.numeric()
     
     data <- data %>% arrange(code, year, quarter)
@@ -101,7 +101,8 @@ preprocess <- function(path, file_names, var_names, extention = ".xls") {
   
   # 데이터를 불러오고 long form으로 전환 후 변수 값들만 모은다.
   vals <- NULL
-  for(name in file_names) {
+  for (name in file_names) {
+    print(name)
     file_path <- paste0(path, name, extention)
     data <- read_excel(file_path, skip = 5)[-1, -1] %>% reshape_long()
     vals <- bind_cols(vals, data["val"])

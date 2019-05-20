@@ -1,7 +1,7 @@
 library(tidyverse)
 library(readxl)
 library(lubridate)
-source("src/preprocessing-utils")
+source("src/preprocessing-utils.R")
 
 
 # stock data
