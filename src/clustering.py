@@ -1,14 +1,15 @@
-import statsmodels.api as sm
 from scipy.spatial.distance import squareform, pdist
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-from tqdm import tqdm
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
 
 
 def time_slice(data, time_idx):
     as_list = list(time_idx)
-    return stock_tbl.groupby(["code"]).nth(as_list).reset_index()
+    return data.groupby(["code"]).nth(as_list).reset_index()
 
 
 def time_expand(data, skip=[0,1]):
@@ -62,7 +63,7 @@ def add_factors_residual(data, risk_free):
     idx_rf = [True if t in data.time.tolist() else False for t in risk_free.time]
     risk_free = risk_free.iloc[idx_rf, :]
 
-    for code in tqdm(data.code.unique()):
+    for code in data.code.unique():
         data.loc[data.code == code, "logret"] = data[data.code == code]["logret"].shift(-1)
         data.loc[data.code == code, "rf"] = risk_free.r.shift(-1)
 
@@ -79,7 +80,7 @@ def add_factors_residual(data, risk_free):
     data["factors_res"] = (res - res.mean()) / res.std()
 
     n_time = data.time.unique().shape[0]
-    dfs = [data.loc[data.code == code, :].iloc[:-1, :] for code in tqdm(data.code.unique())]
+    dfs = [data.loc[data.code == code, :].iloc[:-1, :] for code in data.code.unique()]
     data = pd.concat(dfs)
 
     return data
@@ -92,7 +93,7 @@ def add_market_residual(data, market, risk_free):
     idx_rf = [True if t in data.time.tolist() else False for t in risk_free.time]
     risk_free = risk_free.iloc[idx_rf, :]
 
-    for code in tqdm(data.code.unique()):
+    for code in data.code.unique():
         data.loc[data.code == code, "mk"] = market.logret
         data.loc[data.code == code, "rf"] = risk_free.r
         y = data.logret - data.rf
@@ -122,15 +123,14 @@ def kmeanspp(x, k, random_state=0):
 
 def get_kmeans_tbl(data, ncmin=2, ncmax=5):
     data = data.dropna()
-
-    ncs = range(ncmin, nvmax)
+    ncs = range(ncmin, ncmax)
 
     X = data.iloc[:, 2:]
     models = [kmeanspp(X, nc) for nc in ncs]
-    silhouettes = np.array([silhouette_score(X, m.labels_) for m in tqdm(models)])
+    silhouettes = np.array([silhouette_score(X, m.labels_) for m in models])
     best_model = models[silhouettes.argmax()]
 
-    return pd.DataFrame(np.array([data.code.unique(), kmeans.labels_]).T, columns=["code", "cluster"])
+    return pd.DataFrame(np.array([data.code.unique(), best_model.labels_]).T, columns=["code", "cluster"])
 
 
 def kmeans_with(data, with_, market, risk_free):
@@ -149,7 +149,7 @@ def kmeans_with(data, with_, market, risk_free):
 def integrate_return(return_, weight):
     weight = np.array(weight)
     weight = weight / weight.sum()
-    return np.log(np.sum(weight * np.exp(return_)))
+    return np.log(np.sum(weight * np.exp(return_.tolist())))
 
 
 def integrate_return_apply(row):
@@ -159,24 +159,31 @@ def integrate_return_apply(row):
 def get_cluster_return(data, time_idx, with_, market, risk_free):
     cluster_df = time_slice(data, time_idx)
     cluster_df = scale_tbl(cluster_df)
-    cluster_df = kmeans_with(with_, market, risk_free)
+    cluster_df = kmeans_with(cluster_df, with_, market, risk_free)
     cluster_df = time_expand(cluster_df)
     cluster_df = get_kmeans_tbl(cluster_df)
 
     data = data.merge(cluster_df, how="left", on=["code"]).loc[:, ["code", "time", "logret", "size", "cluster"]]
-    data["size"] = data.size.shift(1)
+    data["size"] = data["size"].shift(1)
     data.dropna(inplace=True)
+    data.reset_index(drop=True, inplace=True)
+    data.cluster = data.cluster.astype(int)
 
-    data["logret"] = data.groupby(["cluster", "time"]).apply(integrate_return_apply).reset_index(drop=True)
-    data = pd.DataFrame(pd.pivot_table(data, values='logret', index=['cluster']).T.to_records()).iloc[:, 1:]
-    data.columns = [f"time{c}" for c in data.columns]
-    data = data.T[0]
+    data = pd.DataFrame(data.groupby(["cluster", "time"]).apply(integrate_return_apply), columns=["logret"]).reset_index()
+    pivot = pd.pivot_table(data, values='logret', index=['cluster'], columns=['time']).T
+    data = pd.DataFrame(pivot.to_records()).iloc[:, 1:]
+    data.columns = [f"cluster{int(c)+1}" for c in data.columns]
+    data = pd.concat([pd.Series(pivot.index), data], axis=1)
 
-    x = data[time_idx]
-    y = data[time_idx[-1] + 1]
-    y_time = data.index[time_idx[-1] + 1]
+    time_idx = time_idx.tolist()
+    x = data.iloc[time_idx, :].reset_index(drop=True)
+    y = data.iloc[time_idx[-1] + 1, :]
+    y_time = data.time[time_idx[-1] + 1]
 
     if (x.shape[0] == len(time_idx)) and (y_time == data.time.unique()[time_idx[-1]+1]):
         return {"x": x, "y": y}
     else:
+        print(time_idx)
+        print(x.shape[0], len(time_idx))
+        print(y_time, data.time.unique()[time_idx[-1]+1])
         raise ValueError()

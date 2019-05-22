@@ -1,14 +1,14 @@
+from functools import reduce
 import pandas as pd
 import numpy as np
 import os
-from functools import reduce
 
 
 def as_quarter(months):
     """
     월(month) 값을 분기(quarter) 값으로 전환
     Example: (1, 2, 3, 4, 5, 6) -> (1, 1, 1, 2, 2, 2)
-    
+
     INPUT:
       x: 1 ~ 12 사이의 integer vector
     RETURN:
@@ -22,9 +22,9 @@ def as_quarter(months):
 
 def is_quarter_interval(date_str):
     """
-    시간 변수가 날짜 형식(ex: "20010131")인지 
+    시간 변수가 날짜 형식(ex: "20010131")인지
     혹은 분기 형식(ex: "2001/1 Quarter)인지 검사
-    
+
     INPUT:
       x: date string vector
     RETURN:
@@ -37,7 +37,7 @@ def reshape_long(df):
     """
     Short form 데이터를 long form 데이터로 변환
     시간 변수가 날짜 형식인 경우 분기 형식으로 변환
-    
+
     INPUT:
       data: raw data를 불러들인 data frame
     RETURN:
@@ -90,7 +90,7 @@ def preprocess(path, file_names, var_names, extension=".xls"):
 
     vals = reduce(lambda x, y: x.merge(y, how="left", on=["code", "name", "time"]), dfs).iloc[:, 3:]
     vals.columns = var_names
-    
+
     features = extract_features(vals)
     df = pd.concat([data.loc[:, ["code", "time"]], features], axis=1)
     return df
@@ -108,11 +108,9 @@ def extract_features(vals):
     equity_turnover = vals.equity_turnover
     volatility = vals.volatility
     logret = np.log(vals.price).diff()
-    
-    features = pd.concat([leverage, asset_growth, shares_turnover, roa, roe, size, 
+
+    features = pd.concat([leverage, asset_growth, shares_turnover, roa, roe, size,
                           pcr, per, equity_turnover, volatility, logret], axis=1)
-    features.columns = ["leverage", "asset_growth", "shares_turnover", "roa", "roe", "size", 
+    features.columns = ["leverage", "asset_growth", "shares_turnover", "roa", "roe", "size",
                         "pcr", "per", "equity_turnover", "volatility", "logret"]
     return features
-
-
