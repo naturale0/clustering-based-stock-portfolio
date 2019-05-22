@@ -28,11 +28,11 @@ def get_weight(x, method, risk_free=None):
 
 
 def get_portfolio_return(data, timeset, n_time, with_, method,
-                         market, risk_free, random_state=0):
+                         market, risk_free, random_state=None):
     p_return = []
     for c_time in tqdm(timeset):
-        time_idx = np.arange(c_time-6+1, c_time+1)
-        c_return = get_cluster_return(data, time_idx, with_, market, risk_free)
+        time_idx = np.arange(c_time-n_time+1, c_time+1)
+        c_return = get_cluster_return(data, time_idx, with_, market, risk_free, random_state=random_state)
 
         x = c_return["x"].iloc[:, 1:].reset_index(drop=True)
         y = c_return["y"][1:]
@@ -57,7 +57,7 @@ def expand_grid(*args):
 
 
 def evaluate_portfolio(data, market, risk_free, start, end,
-                       with_list, n_time_list, method_list, random_state=0):
+                       with_list, n_time_list, method_list, n_process=0, random_state=None):
     timeset = data.time.unique()
     st = [i for i, t in enumerate(timeset) if start in t][0]
     en = [i for i, t in enumerate(timeset) if end in t][0]
@@ -83,19 +83,22 @@ def evaluate_portfolio(data, market, risk_free, start, end,
                 print(f"  n_time: {n_time}")
                 print(f"  method: {method}")
 
-                pr = get_portfolio_return(data, timeset, n_time, with_, method, market, risk_free)
-                pr_tbl = pd.concat([pr_tbl, pr], axis=1)
+                pr = get_portfolio_return(data, timeset, n_time, with_, method, market, risk_free, random_state=random_state)
+                pr_tbl = pd.concat([df.reset_index(drop=True) for df in [pr_tbl, pr]], axis=1)
                 pr_tbl.columns = list(pr_tbl.columns[:-1]) + ["pr"]
 
     pr_tbl.columns = ["time", "kospi"] + model_names.tolist()
 
     # Model performance summary
     pr_cumsum = pr_tbl.iloc[:, 2:].cumsum().iloc[-1, :]
+    df_index = pr_cumsum.index
+    pr_cumsum.reset_index(drop=True, inplace=True)
     pr_sd = np.diag(np.sqrt(pr_tbl.iloc[:, 2:].cov()))
     pr_info_rate = pr_tbl.iloc[:, 2:].to_numpy() - pr_tbl.iloc[:, 1].to_numpy()[np.newaxis].T
     pr_info_rate = pr_info_rate.mean(axis=0) / pr_info_rate.std(axis=0)
 
-    summ = pd.concat([grd, pr_cumsum, pr_sd, pr_info_rate], axis=1)
+    summ = pd.concat([grd] + [pd.Series(x) for x in [pr_cumsum, pr_sd, pr_info_rate]], axis=1)
     summ.columns = grd.columns.tolist() + ["cumsum", "sd", "info_r"]
+    summ.index = df_index
 
     return {"return": pr_tbl, "summary": summ}
